@@ -16,4 +16,4 @@ python3-webapp/          <-- 根目录
 |
 +- README.md             <-- 项目介绍文件
 
-aiohttp + pymysql + aiomysql + jinja2
+技术点：aiohttp + pymysql + aiomysql + jinja2
