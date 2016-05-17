@@ -24,3 +24,8 @@ def index(request):
         '__template__': 'blogs.html',
         'blogs': blogs
     }
+
+
+@get(path='/blog')
+def blog():
+    return ''
