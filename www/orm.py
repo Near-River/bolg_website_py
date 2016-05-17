@@ -180,6 +180,7 @@ class Model(dict, metaclass=ModelMetaclass):
         if value is None:
             field = self.__mappings__[key]
             if field.default is not None:
+                # the default value maybe a function(callable)
                 value = field.default() if callable(field.default) else field.default
                 log.debug('using default value for %s: %s' % (key, str(value)))
                 setattr(self, key, value)
@@ -250,8 +251,3 @@ class Model(dict, metaclass=ModelMetaclass):
         rows = await execute(self.__delete__, args=args)
         if rows != 1:
             log.warning('failed to delete by primary key: affected rows: %s' % rows)
-
-# if __name__ == '__main__':
-#     loop = asyncio.get_event_loop()
-#     loop.run_until_complete(create_connection_pool(loop, user='root', password='123456', db='blog'))
-#     loop.run_forever()
