@@ -23,7 +23,7 @@ def get(path):
         def wrapper(*args, **kwargs):
             return func(*args, **kwargs)
 
-        wrapper.__method = 'GET'
+        wrapper.__method__ = 'GET'
         wrapper.__route__ = path
         return wrapper
 
@@ -38,7 +38,7 @@ def post(path):
         def wrapper(*args, **kwargs):
             return func(*args, **kwargs)
 
-        wrapper.__method = 'POST'
+        wrapper.__method__ = 'POST'
         wrapper.__route__ = path
         return wrapper
 
@@ -177,5 +177,5 @@ def add_routes(app, module_name):
         if callable(fn):
             method = getattr(fn, '__method__', None)
             route = getattr(fn, '__route__', None)
-            if method and path:
+            if method and route:
                 add_route(app, fn)
