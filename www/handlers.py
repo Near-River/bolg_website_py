@@ -7,12 +7,13 @@ __author__ = 'Nate_River'
 async web application: URL handlers
 '''
 
-import time, logging, hashlib, json
+import time, logging, hashlib, json, asyncio
 from www.coreweb import get, post
 from www.models import User, Blog, Comment, next_id
 from conf.config import configs
 from www.apis import *
 from aiohttp import web
+from www.models import User
 
 COOKIE_NAME = 'DRAGON'
 _COOKIE_KEY = configs.session.secret
@@ -82,8 +83,8 @@ def login():
 @get(path='/logout')
 def logout(request):
     referer = request.headers.get('Referer')
-    r = web.HTTPFound(referer, '/')
-    request.set_cookie(COOKIE_NAME, '-deleted-', max_age=0, httponly=True)
+    r = web.HTTPFound(referer or '/')
+    r.set_cookie(COOKIE_NAME, '-deleted-', max_age=0, httponly=True)
     logging.info('user log out.')
     return r
 
@@ -95,7 +96,7 @@ def authenticate(*, email, password):
     if not password or not password.strip():
         raise APIValueError(field='password', message='Invalid password.')
     # check email
-    users = yield from User.findall(where='email=?', args=[email])
+    users = yield from find_users(email)
     if len(users) == 0:
         raise APIValueError(field='email', message='Email not exist.')
     user = users[0]
@@ -115,24 +116,25 @@ def authenticate(*, email, password):
     return r
 
 
-@post(path='/pai/register_check')
+@post(path='/api/register_check')
 def register_check(*, email, password, name):
-    print('pwd', password)
     if not email or not email.strip():
         raise APIValueError(field='email', message='Empty field.')
     if not password or not password.strip():
         raise APIValueError(field='password', message='Empty field.')
     if not name or not name.strip():
         raise APIValueError(field='name', message='Empty field.')
+
     # check email
-    users = yield from User.findall(where='email=?', args=[email])
+    users = yield from find_users(email)
+    # users = (User.findall(where='email=?', args=[email]))
     if len(users) > 0:
         raise APIError(error='register:failed', data='email', message='Email is already exist.')
     uid = next_id()
     sha1_pwd = '%s:%s' % (uid, password)
     user = User(id=uid, name=name, email=email, password=hashlib.sha1(sha1_pwd.encode('utf-8')).hexdigest(),
                 image='http://www.gravatar.com/avatar/%s?d=mm&s=120' % hashlib.md5(email.encode('utf-8')).hexdigest())
-    yield from user.save()
+    yield from save_user(user)
     # make the session cookie
     r = web.Response()
     r.set_cookie(name=COOKIE_NAME, value=user2cookie(user, 86400), max_age=86400, httponly=True)
@@ -140,3 +142,20 @@ def register_check(*, email, password, name):
     r.content_type = 'application/json'
     r.body = json.dumps(user, ensure_ascii=False).encode('utf-8')
     return r
+
+
+"""Incompatible versions: async <--> yield from"""
+
+
+@asyncio.coroutine
+def find_users(email):
+    user = yield from User.findall(where='email=?', args=[email])
+    return user
+
+
+@asyncio.coroutine
+def save_user(user):
+    yield from user.save()
+
+
+"""Incompatible versions"""

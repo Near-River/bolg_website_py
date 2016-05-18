@@ -12,8 +12,9 @@ from datetime import datetime
 from jinja2 import Environment, FileSystemLoader
 from conf.config import configs
 from www.coreweb import add_routes, add_static
-from www.middleware import *
+from www.middleware import logger_factory, response_factory
 from www.orm import create_connection_pool
+from aiohttp import web
 
 logging.basicConfig(level=logging.INFO)
 
@@ -57,7 +58,7 @@ def datetime_filter(t):
 async def init(loop):
     await create_connection_pool(loop=loop, **configs.db)
     app = web.Application(loop=loop, middlewares=[
-        logger_factory, data_factory, response_factory, auth_factory
+        logger_factory, response_factory
     ])
     init_jinja2(app=app, filters=dict(datetime=datetime_filter))
     add_static(app=app)
