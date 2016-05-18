@@ -54,7 +54,7 @@ async def cookie2user(cookie_str):
 
 @get(path='/')
 def index():
-    summary = 'Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
+    summary = 'welcome to my kingdom.'
     blogs = [
         Blog(id='1', name='Test Blog', summary=summary, created_at=time.time() - 120),
         Blog(id='2', name='Something New', summary=summary, created_at=time.time() - 3600),
@@ -124,7 +124,6 @@ def register_check(*, email, password, name):
         raise APIValueError(field='password', message='Empty field.')
     if not name or not name.strip():
         raise APIValueError(field='name', message='Empty field.')
-
     # check email
     users = yield from find_users(email)
     # users = (User.findall(where='email=?', args=[email]))
