@@ -7,7 +7,7 @@ __author__ = 'Nate_River'
 async core web framework.
 '''
 
-import logging as log
+import logging
 import functools, inspect, os
 import asyncio
 from urllib import parse
@@ -128,7 +128,7 @@ class RequestHandler(object):
             # check named args:
             for k, v in request.match_info.items():
                 if k in kw:
-                    log.warning('Duplicate arg name in named arg and kw args: %s' % k)
+                    logging.warning('Duplicate arg name in named arg and kw args: %s' % k)
                 kw[k] = v
         if self._has_request_arg:
             kw['request'] = request
@@ -137,7 +137,7 @@ class RequestHandler(object):
             for name in self._required_kw_args:
                 if not name in kw:
                     return web.HTTPBadRequest('Missing argument: %s' % name)
-        log.info('call with args: %s' % str(kw))
+        logging.info('call with args: %s' % str(kw))
         try:
             r = await self._func(**kw)
             return r
@@ -148,7 +148,7 @@ class RequestHandler(object):
 def add_static(app):
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
     app.router.add_static('/static/', path)
-    log.info('add static %s => %s' % ('/static/', path))
+    logging.info('add static %s => %s' % ('/static/', path))
 
 
 def add_route(app, fn):
@@ -158,7 +158,7 @@ def add_route(app, fn):
         raise ValueError('@get or @post not defined in %s.' % str(fn))
     if not asyncio.iscoroutinefunction(fn) and not inspect.isgeneratorfunction(fn):
         fn = asyncio.coroutine(fn)
-    log.info(
+    logging.info(
         'add route %s %s => %s(%s)' % (method, path, fn.__name__, ', '.join(inspect.signature(fn).parameters.keys())))
     app.router.add_route(method, path, RequestHandler(app, fn))
 

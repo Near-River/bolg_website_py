@@ -7,7 +7,7 @@ __author__ = 'Nate_River'
 orm framework.
 '''
 
-import logging as log
+import logging
 import aiomysql
 import asyncio
 from aiomysql import create_pool
@@ -15,7 +15,7 @@ from aiomysql import create_pool
 
 async def create_connection_pool(loop, **kwargs):
     """create the connection pool"""
-    log.info('create database connection pool...')
+    logging.info('create database connection pool...')
     global __pool__
     __pool__ = await create_pool(
         host=kwargs.get('host', 'localhost'),
@@ -36,7 +36,7 @@ async def select(sql, args, size=None):
     """execute select instruction
         return the query result set
     """
-    log.info('SQL: %s', sql)
+    logging.info('SQL: %s', sql)
     global __pool__
     async with __pool__.get() as conn:
         # print(type(conn))   # <class 'aiomysql.connection.Connection'>
@@ -49,7 +49,7 @@ async def select(sql, args, size=None):
                     rs = await cursor.fetchmany(size)
             else:
                 rs = await cursor.fetchall()
-            log.info('rows returned %s' % len(rs))
+            logging.info('rows returned %s' % len(rs))
             return rs
 
 
@@ -57,7 +57,7 @@ async def execute(sql, args, autocommit=True):
     """execute insert | update | delete instruction
         return the affected rows number
     """
-    log.info('SQL: %s', sql)
+    logging.info('SQL: %s', sql)
     global __pool__
     async with __pool__.get() as conn:
         if not autocommit:
@@ -122,7 +122,7 @@ class ModelMetaclass(type):
             return type.__new__(cls, name, bases, attrs)
         # read the table name from the mapping class
         tablename = attrs.get('__table__', None) or name
-        log.info('found model: %s (table: %s)' % (name, tablename))
+        logging.info('found model: %s (table: %s)' % (name, tablename))
 
         # save all the object fields name
         fields = list()
@@ -133,7 +133,7 @@ class ModelMetaclass(type):
 
         for k, v in attrs.items():
             if isinstance(v, Field):
-                log.info('  found mapping: %s ==> %s' % (k, v))
+                logging.info('  found mapping: %s ==> %s' % (k, v))
                 mappings[k] = v
                 if v.primary_key:
                     if primary_key:
@@ -182,7 +182,7 @@ class Model(dict, metaclass=ModelMetaclass):
             if field.default is not None:
                 # the default value maybe a function(callable)
                 value = field.default() if callable(field.default) else field.default
-                log.debug('using default value for %s: %s' % (key, str(value)))
+                logging.debug('using default value for %s: %s' % (key, str(value)))
                 setattr(self, key, value)
         return value
 
@@ -237,17 +237,17 @@ class Model(dict, metaclass=ModelMetaclass):
         args.append(self.getvalue(self.__primarykey__))
         rows = await execute(self.__insert__, args=args)
         if rows != 1:
-            log.warning('failed to insert by primary key: affected rows: %s' % rows)
+            logging.warning('failed to insert by primary key: affected rows: %s' % rows)
 
     async def update(self):
         args = list(map(lambda key: getattr(self, key, None), self.__fields__))
         args.append(getattr(self, self.__primarykey__, None))
         rows = await execute(self.__update__, args=args)
         if rows != 1:
-            log.warning('failed to update by primary key: affected rows: %s' % rows)
+            logging.warning('failed to update by primary key: affected rows: %s' % rows)
 
     async def delete(self):
         args = [getattr(self, self.__primarykey__, None)]
         rows = await execute(self.__delete__, args=args)
         if rows != 1:
-            log.warning('failed to delete by primary key: affected rows: %s' % rows)
+            logging.warning('failed to delete by primary key: affected rows: %s' % rows)

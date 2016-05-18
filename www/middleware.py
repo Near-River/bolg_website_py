@@ -10,6 +10,7 @@ async web application: middleware
 import logging
 import json
 from aiohttp import web
+from www.handlers import cookie2user, COOKIE_NAME
 
 
 async def logger_factory(app, handler):
@@ -32,6 +33,21 @@ async def data_factory(app, handler):
         return await handler(request)
 
     return parse_data
+
+
+async def auth_factory(app, handler):
+    async def auth_user(request):
+        logging.info('check user: %s %s' % (request.method, request.path))
+        request.__user__ = None
+        cookie_str = request.cookies.get(COOKIE_NAME)
+        if cookie_str:
+            user = await cookie2user(cookie_str)
+            if user:
+                logging.info('set current user: %s' % user.email)
+                request.__user__ = user
+        return await handler(request)
+
+    return auth_user
 
 
 async def response_factory(app, handler):
