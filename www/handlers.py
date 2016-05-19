@@ -8,8 +8,9 @@ async web application: URL handlers
 '''
 
 import time, logging, hashlib, json, asyncio
+import www.markdown2 as markdown
 from www.coreweb import get, post
-from www.models import User, Blog, Comment, next_id
+from www.models import User, Blog, Comment, next_id, Page, get_page_index
 from conf.config import configs
 from www.apis import *
 from aiohttp import web
@@ -17,6 +18,11 @@ from www.models import User
 
 COOKIE_NAME = 'DRAGON'
 _COOKIE_KEY = configs.session.secret
+
+
+def check_admin(request):
+    if request.__user__ is None or request.__user__.admin == False:
+        raise APIPermissionError()
 
 
 def user2cookie(user, max_age):
@@ -52,16 +58,24 @@ async def cookie2user(cookie_str):
         return None
 
 
+def text2html(text):
+    lines = map(lambda s: '<p>%s</p>' % s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'),
+                filter(lambda s: s.strip() != '', text.split('\n')))
+    return ''.join(lines)
+
+
 @get(path='/')
-def index():
-    summary = 'welcome to my kingdom.'
-    blogs = [
-        Blog(id='1', name='Test Blog', summary=summary, created_at=time.time() - 120),
-        Blog(id='2', name='Something New', summary=summary, created_at=time.time() - 3600),
-        Blog(id='3', name='Learn Swift', summary=summary, created_at=time.time() - 7200)
-    ]
+def index(*, page='1'):
+    page_index = get_page_index(page)
+    num = yield from find_number(model='blog', selectField='id')
+    page = Page(num, page_index)
+    if num == 0:
+        blogs = []
+    else:
+        blogs = yield from find_models(model='blog', orderBy='created_at desc', limit=(page.offset, page.limit))
     return {
         '__template__': 'blogs.html',
+        'page': page,
         'blogs': blogs
     }
 
@@ -91,12 +105,13 @@ def logout(request):
 
 @post(path='/api/authenticate')
 def authenticate(*, email, password):
+    """authenticate the login user"""
     if not email or not email.strip():
         raise APIValueError(field='email', message='Invalid email.')
     if not password or not password.strip():
         raise APIValueError(field='password', message='Invalid password.')
     # check email
-    users = yield from find_users(email)
+    users = yield from find_models(model='user', where='email=?', args=[email])
     if len(users) == 0:
         raise APIValueError(field='email', message='Email not exist.')
     user = users[0]
@@ -118,6 +133,7 @@ def authenticate(*, email, password):
 
 @post(path='/api/register_check')
 def register_check(*, email, password, name):
+    """checking the information of the register user"""
     if not email or not email.strip():
         raise APIValueError(field='email', message='Empty field.')
     if not password or not password.strip():
@@ -125,15 +141,15 @@ def register_check(*, email, password, name):
     if not name or not name.strip():
         raise APIValueError(field='name', message='Empty field.')
     # check email
-    users = yield from find_users(email)
     # users = (User.findall(where='email=?', args=[email]))
+    users = yield from find_models(model='user', where='email=?', args=[email])
     if len(users) > 0:
         raise APIError(error='register:failed', data='email', message='Email is already exist.')
     uid = next_id()
     sha1_pwd = '%s:%s' % (uid, password)
     user = User(id=uid, name=name, email=email, password=hashlib.sha1(sha1_pwd.encode('utf-8')).hexdigest(),
                 image='http://www.gravatar.com/avatar/%s?d=mm&s=120' % hashlib.md5(email.encode('utf-8')).hexdigest())
-    yield from save_user(user)
+    yield from save_model(user)
     # make the session cookie
     r = web.Response()
     r.set_cookie(name=COOKIE_NAME, value=user2cookie(user, 86400), max_age=86400, httponly=True)
@@ -143,18 +159,228 @@ def register_check(*, email, password, name):
     return r
 
 
-"""Incompatible versions: async <--> yield from"""
+@get(path='/blog/{id}')
+def get_blog(id):
+    blog = yield from find_model(model='blog', id=id)
+    comments = yield from find_models(model='comment', where='blog_id=?', args=[id], orderBy='created_at desc')
+    for c in comments:
+        c.html_content = text2html(c.content)
+    blog.html_content = markdown.markdown(blog.content)
+    return {
+        '__template__': 'blog.html',
+        'blog': blog,
+        'comments': comments
+    }
+
+
+@get(path='/manage/')
+def manage():
+    return 'redirect:/manage/blogs'
+
+
+@get(path='/manage/users')
+def manage_users(*, page='1'):
+    return {
+        '__template__': 'users_manage.html',
+        'page_index': get_page_index(page)
+    }
+
+
+@get(path='/manage/comments')
+def manage_comments(*, page='1'):
+    return {
+        '__template__': 'comments_manage.html',
+        'page_index': get_page_index(page)
+    }
+
+
+@get(path='/manage/blogs')
+def manage_blogs(*, page='1'):
+    return {
+        '__template__': 'blogs_manage.html',
+        'page_index': get_page_index(page)
+    }
+
+
+@get(path='/manage/blogs/create')
+def create_blog():
+    return {
+        '__template__': 'blog_edit.html',
+        'id': '',
+        'action': '/api/blogs'
+    }
+
+
+@get(path='/manage/blogs/edit')
+def create_blog(*, id):
+    return {
+        '__template__': 'blog_edit.html',
+        'id': id,
+        'action': '/api/blogs'
+    }
+
+
+@get(path='/api/blogs')
+def api_blogs(*, page='1'):
+    """loading blogs by page"""
+    page_index = get_page_index(page)
+    num = yield from find_number(model='blog', selectField='id')
+    p = Page(num, page_index)
+    if num == 0:
+        return dict(page=p, blogs=[])
+    blogs = yield from find_models(model='blog', orderBy='created_at desc', limit=(p.offset, p.limit))
+    return dict(page=p, blogs=blogs)
+
+
+@post(path='/api/blogs')
+def api_create_blog(request, *, id, name, summary, content):
+    """edit the blog:
+        if exist id:    update the blog
+        else:           save the blog
+    """
+    check_admin(request)
+    if not name or not name.strip():
+        raise APIValueError('name', 'blog name cannot be empty.')
+    if not summary or not summary.strip():
+        raise APIValueError('summary', 'blog summary cannot be empty.')
+    if not content or not content.strip():
+        raise APIValueError('content', 'blog content cannot be empty.')
+    # save the blog
+    if id == '':
+        blog = Blog(user_id=request.__user__.id, user_name=request.__user__.name, user_image=request.__user__.image,
+                    name=name.strip(), summary=summary.strip(), content=content.strip())
+        yield from save_model(blog)
+    # update the blog
+    else:
+        blog = yield from find_model(model='blog', id=id)
+        blog.name = name
+        blog.summary = summary
+        blog.content = content
+        yield from update_model(blog)
+    return blog
+
+
+@get(path='/api/blogs/{id}')
+def api_get_blog(*, id):
+    """find a blog by it's id"""
+    blog = yield from find_model('blog', id)
+    return blog
+
+
+@post(path='/api/blogs/{id}/delete')
+def api_delete_blog(*, id):
+    """delete a specify blog"""
+    blog = yield from find_model(model='blog', id=id)
+    yield from delete_model(blog)
+    return {}
+
+
+@get(path='/api/users')
+def api_get_users(*, page='1'):
+    """loading users by page"""
+    page_index = get_page_index(page)
+    num = yield from find_number(model='user', selectField='id')
+    p = Page(num, page_index)
+    if num == 0:
+        return dict(page=p, users=())
+    users = yield from find_models(model='user', orderBy='created_at desc', limit=(p.offset, p.limit))
+    for u in users:
+        u.password = '********'
+    return dict(page=p, users=users)
+
+
+@get(path='/api/comments')
+def api_get_comments(*, page='1'):
+    """loading comments by page"""
+    page_index = get_page_index(page)
+    num = yield from find_number(model='comment', selectField='id')
+    p = Page(num, page_index)
+    if num == 0:
+        return dict(page=p, users=())
+    comments = yield from find_models(model='comment', orderBy='created_at desc', limit=(p.offset, p.limit))
+    return dict(page=p, comments=comments)
+
+
+@post('/api/blogs/{id}/comments')
+def api_create_comment(id, request, *, content):
+    """save the comment with the associated blog"""
+    user = request.__user__
+    if user is None:
+        raise APIPermissionError('Please login first.')
+    if not content or not content.strip():
+        raise APIValueError(field='content', message='content can\'t be empty.')
+    blog = yield from find_model(model='blog', id=id)
+    if blog is None:
+        raise APIResourceNotFoundError(field='Blog', message='can\'t load the responding blog')
+    comment = Comment(blog_id=blog.id, user_id=user.id, user_name=user.name, user_image=user.image,
+                      content=content.strip())
+    yield from save_model(comment)
+    return comment
+
+
+@post(path='/api/comments/{id}/delete')
+def api_delete_comment(*, id):
+    """delete a specify comment"""
+    comment = yield from find_model(model='comment', id=id)
+    yield from delete_model(comment)
+    return {}
+
+
+"""Patch for Incompatible versions: async <--> yield from"""
 
 
 @asyncio.coroutine
-def find_users(email):
-    user = yield from User.findall(where='email=?', args=[email])
-    return user
+def find_number(model, selectField, where=None, args=None):
+    if model == 'blog':
+        count = yield from Blog.findnumber(selectField=selectField, where=where, args=args)
+        return count
+    if model == 'user':
+        count = yield from User.findnumber(selectField=selectField, where=where, args=args)
+        return count
+    if model == 'comment':
+        count = yield from Comment.findnumber(selectField=selectField, where=where, args=args)
+        return count
 
 
 @asyncio.coroutine
-def save_user(user):
-    yield from user.save()
+def find_model(model, id):
+    if model == 'blog':
+        blog = yield from Blog.find(id)
+        return blog
+    if model == 'user':
+        user = yield from User.find(id)
+        return user
+    if model == 'comment':
+        comment = yield from Comment.find(id)
+        return comment
 
 
-"""Incompatible versions"""
+@asyncio.coroutine
+def find_models(model, where=None, args=None, **kw):
+    if model == 'user':
+        users = yield from User.findall(where=where, args=args, **kw)
+        return users
+    if model == 'blog':
+        blogs = yield from Blog.findall(where=where, args=args, **kw)
+        return blogs
+    if model == 'comment':
+        comments = yield from Comment.findall(where=where, args=args, **kw)
+        return comments
+
+
+@asyncio.coroutine
+def save_model(model):
+    yield from model.save()
+
+
+@asyncio.coroutine
+def update_model(model):
+    yield from model.update()
+
+
+@asyncio.coroutine
+def delete_model(model):
+    yield from model.delete()
+
+
+"""Patch for Incompatible versions"""

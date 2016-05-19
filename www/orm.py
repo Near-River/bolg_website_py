@@ -213,7 +213,7 @@ class Model(dict, metaclass=ModelMetaclass):
             if isinstance(limit, int):
                 sql.append('?')
                 args.append(limit)
-            elif isinstance(limit, [tuple, list]) and len(limit) == 2:
+            elif isinstance(limit, tuple) and len(limit) == 2:
                 sql.append('?, ?')
                 args.extend(limit)
             else:
