@@ -14,14 +14,13 @@ from www.models import User, Blog, Comment, next_id, Page, get_page_index
 from conf.config import configs
 from www.apis import *
 from aiohttp import web
-from www.models import User
 
 COOKIE_NAME = 'DRAGON'
 _COOKIE_KEY = configs.session.secret
 
 
 def check_admin(request):
-    if request.__user__ is None or request.__user__.admin == False:
+    if request.__user__ is None or not request.__user__.admin:
         raise APIPermissionError()
 
 
@@ -68,14 +67,14 @@ def text2html(text):
 def index(*, page='1'):
     page_index = get_page_index(page)
     num = yield from find_number(model='blog', selectField='id')
-    page = Page(num, page_index)
+    p = Page(num, page_index)
     if num == 0:
         blogs = []
     else:
-        blogs = yield from find_models(model='blog', orderBy='created_at desc', limit=(page.offset, page.limit))
+        blogs = yield from find_models(model='blog', orderBy='created_at desc', limit=(p.offset, p.limit))
     return {
         '__template__': 'blogs.html',
-        'page': page,
+        'page': p,
         'blogs': blogs
     }
 
@@ -100,62 +99,6 @@ def logout(request):
     r = web.HTTPFound(referer or '/')
     r.set_cookie(COOKIE_NAME, '-deleted-', max_age=0, httponly=True)
     logging.info('user log out.')
-    return r
-
-
-@post(path='/api/authenticate')
-def authenticate(*, email, password):
-    """authenticate the login user"""
-    if not email or not email.strip():
-        raise APIValueError(field='email', message='Invalid email.')
-    if not password or not password.strip():
-        raise APIValueError(field='password', message='Invalid password.')
-    # check email
-    users = yield from find_models(model='user', where='email=?', args=[email])
-    if len(users) == 0:
-        raise APIValueError(field='email', message='Email not exist.')
-    user = users[0]
-    # check password
-    sha1 = hashlib.sha1()
-    sha1.update(user.id.encode('utf-8'))
-    sha1.update(b':')
-    sha1.update(password.encode('utf-8'))
-    if user.password != sha1.hexdigest():
-        raise APIValueError(field='password', message='Invalid password.')
-    # pass the authenticate, then set cookie for the user
-    r = web.Response()
-    r.set_cookie(name=COOKIE_NAME, value=user2cookie(user, 86400), max_age=86400, httponly=True)
-    user.password = '********'
-    r.content_type = 'application/json'
-    r.body = json.dumps(user, ensure_ascii=False).encode('utf-8')
-    return r
-
-
-@post(path='/api/register_check')
-def register_check(*, email, password, name):
-    """checking the information of the register user"""
-    if not email or not email.strip():
-        raise APIValueError(field='email', message='Empty field.')
-    if not password or not password.strip():
-        raise APIValueError(field='password', message='Empty field.')
-    if not name or not name.strip():
-        raise APIValueError(field='name', message='Empty field.')
-    # check email
-    # users = (User.findall(where='email=?', args=[email]))
-    users = yield from find_models(model='user', where='email=?', args=[email])
-    if len(users) > 0:
-        raise APIError(error='register:failed', data='email', message='Email is already exist.')
-    uid = next_id()
-    sha1_pwd = '%s:%s' % (uid, password)
-    user = User(id=uid, name=name, email=email, password=hashlib.sha1(sha1_pwd.encode('utf-8')).hexdigest(),
-                image='http://www.gravatar.com/avatar/%s?d=mm&s=120' % hashlib.md5(email.encode('utf-8')).hexdigest())
-    yield from save_model(user)
-    # make the session cookie
-    r = web.Response()
-    r.set_cookie(name=COOKIE_NAME, value=user2cookie(user, 86400), max_age=86400, httponly=True)
-    user.password = '********'
-    r.content_type = 'application/json'
-    r.body = json.dumps(user, ensure_ascii=False).encode('utf-8')
     return r
 
 
@@ -220,6 +163,62 @@ def create_blog(*, id):
     }
 
 
+# ======================================================================================================================
+@post(path='/api/authenticate')
+def authenticate(*, email, password):
+    """authenticate the login user"""
+    if not email or not email.strip():
+        raise APIValueError(field='email', message='Invalid email.')
+    if not password or not password.strip():
+        raise APIValueError(field='password', message='Invalid password.')
+    # check email
+    users = yield from find_models(model='user', where='email=?', args=[email])
+    if len(users) == 0:
+        raise APIValueError(field='email', message='Email not exist.')
+    user = users[0]
+    # check password
+    sha1 = hashlib.sha1()
+    sha1.update(user.id.encode('utf-8'))
+    sha1.update(b':')
+    sha1.update(password.encode('utf-8'))
+    if user.password != sha1.hexdigest():
+        raise APIValueError(field='password', message='Invalid password.')
+    # pass the authenticate, then set cookie for the user
+    r = web.Response()
+    r.set_cookie(name=COOKIE_NAME, value=user2cookie(user, 86400), max_age=86400, httponly=True)
+    user.password = '********'
+    r.content_type = 'application/json'
+    r.body = json.dumps(user, ensure_ascii=False).encode('utf-8')
+    return r
+
+
+@post(path='/api/register_check')
+def register_check(*, email, password, name):
+    """checking the information of the register user"""
+    if not email or not email.strip():
+        raise APIValueError(field='email', message='Empty field.')
+    if not password or not password.strip():
+        raise APIValueError(field='password', message='Empty field.')
+    if not name or not name.strip():
+        raise APIValueError(field='name', message='Empty field.')
+    # check email
+    users = yield from find_models(model='user', where='email=?', args=[email])
+    if len(users) > 0:
+        raise APIError(error='register:failed', data='email', message='Email is already exist.')
+    uid = next_id()
+    sha1_pwd = '%s:%s' % (uid, password)
+    user = User(id=uid, name=name, email=email, password=hashlib.sha1(sha1_pwd.encode('utf-8')).hexdigest(),
+                image='http://www.gravatar.com/avatar/%s?d=mm&s=120' % hashlib.md5(email.encode('utf-8')).hexdigest())
+    yield from save_model(user)
+    # make the session cookie
+    r = web.Response()
+    r.set_cookie(name=COOKIE_NAME, value=user2cookie(user, 86400), max_age=86400, httponly=True)
+    user.password = '********'
+    r.content_type = 'application/json'
+    r.body = json.dumps(user, ensure_ascii=False).encode('utf-8')
+    return r
+
+
 @get(path='/api/blogs')
 def api_blogs(*, page='1'):
     """loading blogs by page"""
@@ -233,7 +232,7 @@ def api_blogs(*, page='1'):
 
 
 @post(path='/api/blogs')
-def api_create_blog(request, *, id, name, summary, content):
+def api_edit_blog(request, *, id, name, summary, content):
     """edit the blog:
         if exist id:    update the blog
         else:           save the blog
@@ -326,7 +325,7 @@ def api_delete_comment(*, id):
     return {}
 
 
-"""Patch for Incompatible versions: async <--> yield from"""
+"""Patch for Incompatible versions: await <--> yield from"""
 
 
 @asyncio.coroutine

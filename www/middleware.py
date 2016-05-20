@@ -7,8 +7,7 @@ __author__ = 'Nate_River'
 async web application: middleware
 '''
 
-import logging
-import json
+import logging, json
 from aiohttp import web
 from www.handlers import cookie2user, COOKIE_NAME
 

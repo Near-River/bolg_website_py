@@ -51,7 +51,6 @@ def toDict(d):
 
 
 configs = config_default.configs
-
 try:
     from conf import config_override
 

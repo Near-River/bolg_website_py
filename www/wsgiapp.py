@@ -9,12 +9,11 @@ async web application.
 
 import asyncio, os, time, logging
 from datetime import datetime
+from aiohttp import web
 from jinja2 import Environment, FileSystemLoader
 from conf.config import configs
-from www.coreweb import add_routes, add_static
-from www.middleware import *
 from www.orm import create_connection_pool
-from aiohttp import web
+from www.coreweb import add_routes, add_static
 
 logging.basicConfig(level=logging.INFO)
 
@@ -57,8 +56,10 @@ def datetime_filter(t):
 
 async def init(loop):
     await create_connection_pool(loop=loop, **configs.db)
+
+    from www.middleware import logger_factory, data_factory, auth_factory, response_factory
     app = web.Application(loop=loop, middlewares=[
-        logger_factory, data_factory, auth_factory, response_factory
+        logger_factory, auth_factory, data_factory, response_factory
     ])
     init_jinja2(app=app, filters=dict(datetime=datetime_filter))
     add_static(app=app)

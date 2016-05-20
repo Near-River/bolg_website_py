@@ -49,7 +49,7 @@ async def select(sql, args, size=None):
                     rs = await cursor.fetchmany(size)
             else:
                 rs = await cursor.fetchall()
-            logging.info('rows returned %s' % len(rs))
+            logging.info('result set size: %s' % len(rs))
             return rs
 
 
@@ -117,18 +117,26 @@ def create_args_string(num):
 
 
 class ModelMetaclass(type):
+    """Metaclass of the class Model"""
+
     def __new__(cls, name, bases, attrs):
+        """
+        :param name:    class name
+        :param bases:   super classes
+        :param attrs:   attributes of the current class
+        :return:
+        """
         if name == 'Model':
             return type.__new__(cls, name, bases, attrs)
         # read the table name from the mapping class
         tablename = attrs.get('__table__', None) or name
         logging.info('found model: %s (table: %s)' % (name, tablename))
 
-        # save all the object fields name
+        # save all the object's fields name
         fields = list()
         # save the primary key name
         primary_key = None
-        # save the mapping from object attributes name to table fields
+        # save the mapping from object's attributes name to table fields
         mappings = dict()
 
         for k, v in attrs.items():
@@ -151,7 +159,7 @@ class ModelMetaclass(type):
         attrs['__primarykey__'] = primary_key
         attrs['__fields__'] = fields
 
-        # create the default SELECT, INSERT, UPDATE and DELETE statement
+        # create the default(basic) SELECT, INSERT, UPDATE and DELETE statement
         escaped_fields = list(map(lambda f: '`%s`' % f, fields))
         attrs['__select__'] = 'select `%s`, %s from `%s`' % (primary_key, ', '.join(escaped_fields), tablename)
         attrs['__insert__'] = 'insert into `%s` (%s, `%s`) values (%s)' % (
@@ -196,7 +204,7 @@ class Model(dict, metaclass=ModelMetaclass):
 
     @classmethod
     async def findall(cls, where=None, args=None, **kw):
-        """find objects by where clause"""
+        """find objects by where clause and else ..."""
         sql = [cls.__select__]
         if where:
             sql.append('where')
